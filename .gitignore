@@ -9,4 +9,6 @@
 vendor/
 .idea/
 .vscode/
+node_modules/
+*.log
 EOF

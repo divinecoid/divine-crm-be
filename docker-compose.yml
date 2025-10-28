@@ -1,0 +1,142 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: divine-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: divine_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - divine-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: divine-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - divine-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: divine-api-gateway
+    ports:
+      - "8080:3003"
+    environment:
+      - PORT=3003
+      - DATABASE_URL=host=postgres user=postgres password=postgres dbname=divine_crm port=5432 sslmode=disable
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - postgres
+    networks:
+      - divine-network
+    restart: unless-stopped
+
+  # Webhook Service
+  webhook-service:
+    build:
+      context: ./webhook-service
+      dockerfile: Dockerfile
+    container_name: divine-webhook-service
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - DATABASE_URL=host=postgres user=postgres password=postgres dbname=divine_crm port=5432 sslmode=disable
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN}
+      - INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN}
+      - AI_SERVICE_URL=http://ai-service:3003
+    depends_on:
+      - postgres
+      - ai-service
+    networks:
+      - divine-network
+    restart: unless-stopped
+
+  # Contact Service
+  contact-service:
+    build:
+      context: ./contact-service
+      dockerfile: Dockerfile
+    container_name: divine-contact-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DATABASE_URL=host=postgres user=postgres password=postgres dbname=divine_crm port=5432 sslmode=disable
+      - CONTACT_SERVICE_URL=http://contact-service:3001
+      - CHAT_SERVICE_URL=http://chat-service:3002
+      - AI_SERVICE_URL=http://ai-service:3003
+      - WEBHOOK_SERVICE_URL=http://webhook-service:3004
+    depends_on:
+      - postgres
+      - chat-service
+      - ai-service
+      - webhook-service
+    networks:
+      - divine-network
+    restart: unless-stopped
+
+  # Chat Service
+  chat-service:
+    build:
+      context: ./chat-service
+      dockerfile: Dockerfile
+    container_name: divine-chat-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - DATABASE_URL=host=postgres user=postgres password=postgres dbname=divine_crm port=5432 sslmode=disable
+    depends_on:
+      - postgres
+    networks:
+      - divine-network
+    restart: unless-stopped
+
+  # AI Service
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: divine-ai-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - DATABASE_URL=host=postgres user=postgres password=postgres dbname=divine_crm port=5432 sslmode=disable
+    depends_on:
+      - postgres
+    networks:
+      - divine-network
+    restart: unless-stopped
+
+networks:
+  divine-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  driver: local
