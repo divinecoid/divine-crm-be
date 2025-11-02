@@ -40,6 +40,27 @@ type Contact struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+type MetaMessageResponse struct {
+	MessagingProduct string `json:"messaging_product"`
+	Contacts         []struct {
+		Input string `json:"input"`
+		WaID  string `json:"wa_id"`
+	} `json:"contacts"`
+	Messages []struct {
+		ID string `json:"id"`
+	} `json:"messages"`
+}
+
+type MetaErrorResponse struct {
+	Error struct {
+		Message      string `json:"message"`
+		Type         string `json:"type"`
+		Code         int    `json:"code"`
+		ErrorSubcode int    `json:"error_subcode"`
+		FbtraceID    string `json:"fbtrace_id"`
+	} `json:"error"`
+}
+
 type Lead struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	Code          string    `json:"code" gorm:"uniqueIndex"`
@@ -261,6 +282,11 @@ func main() {
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("ngrok-skip-browser-warning", "true")
+		return c.Next()
+	})
+
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -333,6 +359,8 @@ func main() {
 	api.Put("/chats/:id", authMiddleware, updateChatMessage)
 	api.Post("/chats/:id/assign", authMiddleware, assignChat)
 	api.Post("/chats/:id/resolve", authMiddleware, resolveChat)
+
+	api.Post("/test-whatsapp", authMiddleware, testWhatsAppConnection)
 
 	// AI Processing
 	ai := api.Group("/ai", authMiddleware)
@@ -840,19 +868,177 @@ func getAgentPerformance(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "data": fiber.Map{}})
 }
 
-// Webhook Handlers
 func verifyWhatsAppWebhook(c *fiber.Ctx) error {
+	// Log semua query parameters
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("📥 WEBHOOK VERIFICATION REQUEST")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Printf("   URL: %s", c.OriginalURL())
+	log.Printf("   Method: %s", c.Method())
+	log.Printf("   IP: %s", c.IP())
+
+	// Get all query params
+	allQueries := c.Queries()
+	log.Println("   All Query Parameters:")
+	for key, val := range allQueries {
+		log.Printf("      %s = %s", key, val)
+	}
+
 	mode := c.Query("hub.mode")
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
-	if mode == "subscribe" && token == os.Getenv("WHATSAPP_VERIFY_TOKEN") {
-		return c.SendString(challenge)
+
+	log.Printf("   hub.mode: '%s'", mode)
+	log.Printf("   hub.verify_token: '%s'", token)
+	log.Printf("   hub.challenge: '%s'", challenge)
+
+	// Get expected verify token
+	verifyToken := os.Getenv("WHATSAPP_VERIFY_TOKEN")
+	if verifyToken == "" {
+		verifyToken = "divine-crm-webhook-2024"
+		log.Printf("   ⚠️  Using default verify token")
 	}
+	log.Printf("   Expected Token: '%s'", verifyToken)
+
+	// Check conditions
+	log.Printf("   Mode is 'subscribe': %v", mode == "subscribe")
+	log.Printf("   Token matches: %v", token == verifyToken)
+
+	if mode == "subscribe" && token == verifyToken {
+		log.Println("✅ VERIFICATION SUCCESS - Sending challenge back")
+		log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		return c.Status(200).SendString(challenge)
+	}
+
+	log.Println("❌ VERIFICATION FAILED - Sending 403")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	return c.Status(403).SendString("Forbidden")
 }
 
 func handleWhatsAppWebhook(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{"status": "ok"})
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Println("📨 INCOMING WHATSAPP MESSAGE")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	// Parse webhook body
+	var webhook WhatsAppWebhook
+	if err := c.BodyParser(&webhook); err != nil {
+		log.Printf("❌ Failed to parse webhook: %v", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid payload"})
+	}
+
+	// Log raw payload untuk debugging
+	bodyBytes := c.Body()
+	log.Printf("📦 Raw Payload: %s", string(bodyBytes))
+
+	// Cek apakah ada entry dan changes
+	if len(webhook.Entry) == 0 || len(webhook.Entry[0].Changes) == 0 {
+		log.Println("⚠️  No entries or changes in webhook")
+		return c.JSON(fiber.Map{"status": "ok"})
+	}
+
+	value := webhook.Entry[0].Changes[0].Value
+
+	// Cek apakah ada messages
+	if len(value.Messages) == 0 {
+		log.Println("⚠️  No messages in webhook (might be status update)")
+		return c.JSON(fiber.Map{"status": "ok"})
+	}
+
+	// Extract data
+	message := value.Messages[0]
+	senderPhone := message.From
+	messageText := message.Text.Body
+	senderName := ""
+
+	if len(value.Contacts) > 0 {
+		senderName = value.Contacts[0].Profile.Name
+	}
+
+	log.Printf("👤 From: %s (%s)", senderName, senderPhone)
+	log.Printf("💬 Message: %s", messageText)
+
+	// 1. Cari atau buat contact
+	var contact Contact
+	err := db.Where("channel = ? AND channel_id = ?", "WhatsApp", senderPhone).First(&contact).Error
+	if err != nil {
+		// Contact baru
+		contact = Contact{
+			Code:          generateCode("C", &Contact{}),
+			Channel:       "WhatsApp",
+			ChannelID:     senderPhone,
+			Name:          senderName,
+			Temperature:   "Warm",
+			FirstContact:  time.Now(),
+			LastContact:   time.Now(),
+			LastAgent:     "AI",
+			LastAgentType: "Bot",
+		}
+		db.Create(&contact)
+		log.Printf("✅ New contact created: %s", contact.Code)
+	} else {
+		// Update last contact
+		contact.LastContact = time.Now()
+		contact.Name = senderName // Update nama jika berubah
+		db.Save(&contact)
+		log.Printf("♻️  Existing contact updated: %s", contact.Code)
+	}
+
+	// 2. Cari AI Agent yang aktif
+	var agent AIAgent
+	err = db.Where("active = ?", true).First(&agent).Error
+	if err != nil {
+		log.Printf("❌ No active AI agent found")
+		return c.JSON(fiber.Map{"status": "ok", "error": "No AI agent configured"})
+	}
+
+	log.Printf("🤖 Using AI Agent: %s (%s)", agent.Name, agent.AIEngine)
+
+	// 3. Cari AI Configuration
+	var config AIConfiguration
+	err = db.Where("ai_engine = ? AND active = ?", agent.AIEngine, true).First(&config).Error
+	if err != nil {
+		log.Printf("❌ AI Configuration not found for engine: %s", agent.AIEngine)
+		return c.JSON(fiber.Map{"status": "ok", "error": "AI not configured"})
+	}
+
+	// 4. Process dengan AI
+	log.Println("🧠 Processing with AI...")
+	aiResponse, tokensUsed, err := callOpenAI(&config, agent.BasicPrompt, messageText)
+	if err != nil {
+		log.Printf("❌ AI processing failed: %v", err)
+		aiResponse = "Maaf, saya sedang mengalami gangguan. Silakan coba lagi nanti."
+		tokensUsed = 0
+	} else {
+		log.Printf("✅ AI Response generated (%d tokens)", tokensUsed)
+	}
+
+	// 5. Simpan chat message
+	chatMsg := ChatMessage{
+		ContactID:     contact.ID,
+		ContactName:   contact.Name,
+		Message:       messageText,
+		Response:      aiResponse,
+		Status:        "Resolved",
+		AssignedAgent: agent.Name,
+		Channel:       "WhatsApp",
+		TokensUsed:    tokensUsed,
+	}
+	db.Create(&chatMsg)
+	log.Printf("💾 Chat saved to database (ID: %d)", chatMsg.ID)
+
+	// 6. Kirim response ke WhatsApp
+	log.Println("📤 Sending response to WhatsApp...")
+	err = sendWhatsAppMessage(senderPhone, aiResponse)
+	if err != nil {
+		log.Printf("❌ Failed to send WhatsApp message: %v", err)
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": err.Error()})
+	}
+
+	log.Println("✅ Response sent successfully!")
+	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	return c.JSON(fiber.Map{"status": "ok", "message": "processed"})
 }
 
 func handleTelegramWebhook(c *fiber.Ctx) error {
@@ -955,4 +1141,112 @@ func verifyToken(tokenString string) (*JWTClaims, error) {
 	}
 
 	return nil, jwt.ErrSignatureInvalid
+}
+
+// Update fungsi sendWhatsAppMessage dengan error handling lebih baik
+func sendWhatsAppMessage(to, message string) error {
+	var platform ConnectedPlatform
+	if err := db.Where("platform = ? AND active = ?", "WhatsApp", true).First(&platform).Error; err != nil {
+		return fmt.Errorf("WhatsApp platform not configured: %v", err)
+	}
+
+	// Validasi platform configuration
+	if platform.Token == "" || platform.PhoneNumberID == "" {
+		return fmt.Errorf("WhatsApp credentials not configured properly")
+	}
+
+	url := fmt.Sprintf("https://graph.facebook.com/v18.0/%s/messages", platform.PhoneNumberID)
+
+	payload := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"recipient_type":    "individual",
+		"to":                to,
+		"type":              "text",
+		"text": map[string]string{
+			"preview_url": "false",
+			"body":        message,
+		},
+	}
+
+	jsonData, _ := json.Marshal(payload)
+
+	log.Printf("📤 Sending to WhatsApp API: %s", url)
+	log.Printf("📝 Payload: %s", string(jsonData))
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+platform.Token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("📥 WhatsApp API Response [%d]: %s", resp.StatusCode, string(body))
+
+	if resp.StatusCode != 200 {
+		var errorResp MetaErrorResponse
+		if err := json.Unmarshal(body, &errorResp); err == nil {
+			return fmt.Errorf("WhatsApp API error [%d]: %s (Code: %d, Type: %s)",
+				resp.StatusCode,
+				errorResp.Error.Message,
+				errorResp.Error.Code,
+				errorResp.Error.Type)
+		}
+		return fmt.Errorf("WhatsApp API error [%d]: %s", resp.StatusCode, string(body))
+	}
+
+	var successResp MetaMessageResponse
+	if err := json.Unmarshal(body, &successResp); err == nil && len(successResp.Messages) > 0 {
+		log.Printf("✅ Message sent successfully. Message ID: %s", successResp.Messages[0].ID)
+	}
+
+	return nil
+}
+
+// Tambahkan endpoint untuk testing koneksi WhatsApp
+func testWhatsAppConnection(c *fiber.Ctx) error {
+	var req struct {
+		PhoneNumber string `json:"phone_number"`
+		Message     string `json:"message"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+
+	if req.PhoneNumber == "" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "phone_number is required"})
+	}
+
+	if req.Message == "" {
+		req.Message = "Test message from Divine CRM 🚀"
+	}
+
+	// Pastikan format nomor benar (tanpa + dan dengan kode negara)
+	// Contoh: 6281234567890 (Indonesia)
+	phoneNumber := req.PhoneNumber
+
+	err := sendWhatsAppMessage(phoneNumber, req.Message)
+	if err != nil {
+		log.Printf("❌ Test failed: %v", err)
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"message": "Failed to send WhatsApp message",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "WhatsApp message sent successfully!",
+		"to":      phoneNumber,
+	})
 }
