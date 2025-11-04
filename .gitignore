@@ -1,15 +1,104 @@
-.env
+# Binaries for programs and plugins
 *.exe
+*.exe~
 *.dll
 *.so
 *.dylib
+bin/
+dist/
+build/
+
+# Test binary, built with `go test -c`
 *.test
+
+# Output of the go coverage tool
 *.out
-.DS_Store
+coverage.out
+coverage.html
+
+# Dependency directories
 vendor/
+
+# Go workspace file
+go.work
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE specific files
 .idea/
 .vscode/
-node_modules/
-*.log
-EOF
+*.swp
+*.swo
+*~
+.DS_Store
 
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Air live reload
+.air.toml
+tmp/
+
+# Documentation
+docs/site/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Project specific
+divine-crm
+divine-crm-linux
+divine-crm-windows.exe
+divine-crm-darwin
+
+# Swagger
+docs/swagger.json
+docs/swagger.yaml
+
+# Backup files
+*.bak
+*.backup
+
+# Docker volumes
+.docker/
+
+# SSL certificates (if any)
+*.pem
+*.key
+*.crt
+
+# Compiled Object files
+*.o
+*.a
+
+# Debug files
+debug
+__debug_bin
+
+# Local testing
+test-data/

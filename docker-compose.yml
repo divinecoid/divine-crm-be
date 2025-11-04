@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -7,7 +5,7 @@ services:
     container_name: divine-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: dahsyan80
       POSTGRES_DB: divine_crm
     ports:
       - "5432:5432"
@@ -45,7 +43,8 @@ services:
       - "3001:3001"
     environment:
       - PORT=3001
-      - DATABASE_URL=host=postgres user=postgres password=postgres dbname=divine_crm port=5432 sslmode=disable
+      # ✅ FIXED: Match PostgreSQL credentials and use service name
+      - DATABASE_URL=postgresql://postgres:dahsyan80@postgres:5432/divine_crm?sslmode=disable
       - JWT_SECRET=${JWT_SECRET:-divine-crm-secret-key-change-in-production}
     depends_on:
       postgres:
@@ -65,19 +64,21 @@ services:
       context: ./crm-service
       dockerfile: Dockerfile
     container_name: divine-crm-service
+    env_file:
+      - .env  # ✅ Load additional env vars from .env file
     ports:
       - "3002:3002"
     environment:
       - PORT=3002
-      - DATABASE_URL=host=postgres user=postgres password=postgres dbname=divine_crm port=5432 sslmode=disable
+      - DATABASE_URL=postgresql://postgres:dahsyan80@postgres:5432/divine_crm?sslmode=disable  # ✅ Correct!
       - JWT_SECRET=${JWT_SECRET:-divine-crm-secret-key-change-in-production}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - GROK_API_KEY=${GROK_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-divine_crm_verify_token_123}
-      - INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN:-divine_crm_verify_token_123}
-      - TELEGRAM_VERIFY_TOKEN=${TELEGRAM_VERIFY_TOKEN:-divine_crm_verify_token_123}
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-divine-crm-webhook-2025}  # ✅ Match your actual token
+      - INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN:-divine-crm-webhook-2025}
+      - TELEGRAM_VERIFY_TOKEN=${TELEGRAM_VERIFY_TOKEN:-divine-crm-webhook-2025}
     depends_on:
       postgres:
         condition: service_healthy
