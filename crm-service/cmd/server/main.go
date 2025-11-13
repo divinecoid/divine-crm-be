@@ -1,157 +1,243 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
 	"divine-crm/internal/config"
 	"divine-crm/internal/database"
 	"divine-crm/internal/handlers"
-	"divine-crm/internal/middleware"
 	"divine-crm/internal/repository"
-	"divine-crm/internal/routes"
 	"divine-crm/internal/services"
 	"divine-crm/internal/utils"
+	"fmt"
+	"log"
+	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 )
 
 func main() {
+
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Failed to load configuration:", err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
 	// Initialize logger
-	appLogger := utils.NewLogger(cfg.Logging.Level, cfg.Logging.Format)
+	appLogger := utils.NewLogger(cfg.Logging.Level)
+	appLogger.Info("Starting Divine CRM Service with Vector Embeddings...")
 
-	// Initialize database
-	db, err := database.InitDB(cfg)
+	// Connect to database
+	db, err := database.Connect(cfg)
 	if err != nil {
-		appLogger.Fatal("Failed to initialize database", "error", err)
+		appLogger.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
+	appLogger.Info("Database connected successfully")
 
 	// Run migrations
+	appLogger.Info("Running database migrations...")
 	if err := database.RunMigrations(db); err != nil {
-		appLogger.Fatal("Failed to run migrations", "error", err)
+		appLogger.Error("Failed to run migrations", "error", err)
+		os.Exit(1)
 	}
+	appLogger.Info("Database migrations completed successfully")
 
-	appLogger.Info("Database initialized successfully")
+	// ==================== INITIALIZE REPOSITORIES ====================
+	appLogger.Info("Initializing repositories...")
 
-	// Initialize repositories
 	contactRepo := repository.NewContactRepository(db)
-	leadRepo := repository.NewLeadRepository(db)
 	productRepo := repository.NewProductRepository(db)
+	chatLabelRepo := repository.NewChatLabelRepository(db)
 	chatRepo := repository.NewChatRepository(db)
 	aiRepo := repository.NewAIRepository(db)
 	platformRepo := repository.NewPlatformRepository(db)
+	humanAgentRepo := repository.NewHumanAgentRepository(db)
+	broadcastRepo := repository.NewBroadcastRepository(db)
+	quickReplyRepo := repository.NewQuickReplyRepository(db)
+	vectorRepo := repository.NewVectorRepository(db)
 
-	// Initialize services
-	aiService := services.NewAIService(aiRepo, cfg)
-	whatsappService := services.NewWhatsAppService(platformRepo, appLogger)
+	// ==================== INITIALIZE SERVICES ====================
+	appLogger.Info("Initializing services...")
+
+	// Core services
 	contactService := services.NewContactService(contactRepo, appLogger)
-	chatService := services.NewChatService(chatRepo, contactService, aiService, appLogger)
-	webhookService := services.NewWebhookService(chatService, whatsappService, appLogger)
+	productService := services.NewProductService(productRepo, appLogger)
+	chatLabelService := services.NewChatLabelService(chatLabelRepo, appLogger)
+	quickReplyService := services.NewQuickReplyService(quickReplyRepo, appLogger)
+	vectorService := services.NewVectorService(vectorRepo, cfg, appLogger)
 
-	// Initialize handlers
-	healthHandler := handlers.NewHealthHandler(db)
-	contactHandler := handlers.NewContactHandler(contactService)
-	leadHandler := handlers.NewLeadHandler(leadRepo)
-	productHandler := handlers.NewProductHandler(productRepo)
-	chatHandler := handlers.NewChatHandler(chatService)
-	aiHandler := handlers.NewAIHandler(aiService, aiRepo)
-	webhookHandler := handlers.NewWebhookHandler(webhookService, cfg)
+	// ✅ AI Service now uses vectorService
+	aiService := services.NewAIService(aiRepo, vectorService, cfg)
 
-	// Initialize Fiber app
-	app := fiber.New(fiber.Config{
-		AppName:      cfg.Server.AppName,
-		ErrorHandler: middleware.CustomErrorHandler,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	})
+	humanAgentService := services.NewHumanAgentService(humanAgentRepo, appLogger, cfg)
 
-	// Global middleware
-	app.Use(recover.New())
-	app.Use(requestid.New())
-	app.Use(logger.New(logger.Config{
-		Format: "[${time}] ${status} - ${method} ${path} ${latency}\n",
-	}))
+	// Platform services
+	whatsappService := services.NewWhatsAppService(platformRepo, appLogger)
+	instagramService := services.NewInstagramService(platformRepo, appLogger)
+	telegramService := services.NewTelegramService(platformRepo, appLogger)
 
-	// CORS middleware
-	app.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.CORS.AllowedOrigins[0],
-		AllowHeaders:     cfg.CORS.AllowedHeaders[0],
-		AllowMethods:     cfg.CORS.AllowedMethods[0],
-		AllowCredentials: true,
-	}))
-
-	// Rate limiting (if enabled)
-	if cfg.RateLimit.Enabled {
-		app.Use(middleware.RateLimiter(cfg.RateLimit.Max, cfg.RateLimit.Window))
-	}
-
-	// Skip browser warning header
-	app.Use(func(c *fiber.Ctx) error {
-		c.Set("ngrok-skip-browser-warning", "true")
-		return c.Next()
-	})
-
-	// Setup routes
-	routes.SetupRoutes(app, routes.Handlers{
-		Health:   healthHandler,
-		Contact:  contactHandler,
-		Lead:     leadHandler,
-		Product:  productHandler,
-		Chat:     chatHandler,
-		AI:       aiHandler,
-		Webhook:  webhookHandler,
-	}, cfg)
-
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-quit
-		appLogger.Info("Shutting down server...")
-
-		// Shutdown with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := app.ShutdownWithContext(ctx); err != nil {
-			appLogger.Error("Server forced to shutdown", "error", err)
-		}
-
-		// Close database connection
-		sqlDB, _ := db.DB()
-		if err := sqlDB.Close(); err != nil {
-			appLogger.Error("Failed to close database", "error", err)
-		}
-
-		appLogger.Info("Server shutdown complete")
-		os.Exit(0)
-	}()
-
-	// Start server
-	addr := fmt.Sprintf(":%s", cfg.Server.Port)
-	appLogger.Info("Starting server", 
-		"port", cfg.Server.Port,
-		"environment", cfg.Server.Environment,
+	// Broadcast service
+	broadcastService := services.NewBroadcastService(
+		broadcastRepo,
+		contactRepo,
+		whatsappService,
+		instagramService,
+		telegramService,
+		appLogger,
 	)
 
-	if err := app.Listen(addr); err != nil {
-		appLogger.Fatal("Failed to start server", "error", err)
+	// Chat service (with product context)
+	chatService := services.NewChatService(
+		chatRepo,
+		contactService,
+		aiService,
+		productService,
+		appLogger,
+	)
+
+	// Webhook service
+	webhookService := services.NewWebhookService(
+		chatService,
+		whatsappService,
+		instagramService,
+		telegramService,
+		appLogger,
+	)
+
+	// Platform service
+	platformService := services.NewPlatformService(platformRepo, appLogger)
+
+	// AI Agent service
+	aiAgentService := services.NewAIAgentService(aiRepo, appLogger)
+
+	// AI Config service
+	aiConfigService := services.NewAIConfigService(aiRepo, appLogger)
+
+	// ==================== INITIALIZE HANDLERS ====================
+	appLogger.Info("Initializing handlers...")
+
+	contactHandler := handlers.NewContactHandler(contactService)
+	productHandler := handlers.NewProductHandler(productService)
+	chatLabelHandler := handlers.NewChatLabelHandler(chatLabelService)
+	chatHandler := handlers.NewChatHandler(chatService)
+	aiConfigHandler := handlers.NewAIConfigHandler(aiConfigService)
+	aiAgentHandler := handlers.NewAIAgentHandler(aiAgentService)
+	platformHandler := handlers.NewPlatformHandler(platformService)
+	humanAgentHandler := handlers.NewHumanAgentHandler(humanAgentService)
+	broadcastHandler := handlers.NewBroadcastHandler(broadcastService)
+	quickReplyHandler := handlers.NewQuickReplyHandler(quickReplyService)
+	webhookHandler := handlers.NewWebhookHandler(webhookService, cfg)
+	vectorHandler := handlers.NewVectorHandler(vectorService)
+
+	// ==================== INITIALIZE FIBER APP ====================
+	app := fiber.New(fiber.Config{
+		AppName:      "Divine CRM v1.0 + Vector RAG",
+		ServerHeader: "Divine CRM",
+		BodyLimit:    4 * 1024 * 1024, // 4MB
+		ReadTimeout:  time.Second * 30,
+		WriteTimeout: time.Second * 30,
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			code := fiber.StatusInternalServerError
+			if e, ok := err.(*fiber.Error); ok {
+				code = e.Code
+			}
+
+			appLogger.Error("Request error", "error", err, "path", c.Path())
+
+			return c.Status(code).JSON(fiber.Map{
+				"error":   err.Error(),
+				"success": false,
+			})
+		},
+	})
+
+	// ==================== MIDDLEWARE ====================
+
+	// Recover from panics
+	app.Use(recover.New(recover.Config{
+		EnableStackTrace: true,
+	}))
+
+	// Request ID
+	app.Use(requestid.New())
+
+	// Logger
+	app.Use(logger.New(logger.Config{
+		Format:     "[${time}] ${status} - ${method} ${path} ${latency}\n",
+		TimeFormat: "15:04:05",
+		TimeZone:   "Asia/Jakarta",
+	}))
+
+	// CORS
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     cfg.CORS.AllowOrigins,
+		AllowMethods:     cfg.CORS.AllowMethods,
+		AllowHeaders:     cfg.CORS.AllowHeaders,
+		AllowCredentials: cfg.CORS.AllowCredentials,
+		MaxAge:           cfg.CORS.MaxAge,
+	}))
+
+	// Rate limiter
+	app.Use(limiter.New(limiter.Config{
+		Max:        cfg.RateLimit.RequestsPerMinute,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Rate limit exceeded",
+			})
+		},
+	}))
+
+	// Custom request logging
+	app.Use(func(c *fiber.Ctx) error {
+		start := time.Now()
+		err := c.Next()
+		duration := time.Since(start)
+
+		if duration > 1*time.Second {
+			appLogger.Warn("Slow request",
+				"method", c.Method(),
+				"path", c.Path(),
+				"duration", duration.String(),
+			)
+		}
+
+		return err
+	})
+	appLogger.Info("Setting up routes...")
+
+	setupRoutes(
+		app,
+		cfg,
+		contactHandler,
+		productHandler,
+		chatLabelHandler,
+		chatHandler,
+		aiConfigHandler,
+		aiAgentHandler,
+		platformHandler,
+		humanAgentHandler,
+		broadcastHandler,
+		quickReplyHandler,
+		webhookHandler,
+		vectorHandler,
+	)
+
+	// ==================== START SERVER ====================
+	port := cfg.Server.Port
+	appLogger.Info("Server starting with Vector RAG capabilities", "port", port)
+
+	if err := app.Listen(fmt.Sprintf(":%s", port)); err != nil {
+		appLogger.Error("Failed to start server", "error", err)
+		os.Exit(1)
 	}
 }
