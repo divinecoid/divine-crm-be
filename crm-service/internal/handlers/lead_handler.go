@@ -1,97 +1,49 @@
 package handlers
 
 import (
-	"divine-crm/internal/models"
-	"divine-crm/internal/repository"
-	"divine-crm/internal/utils"
-	"strconv"
-
+	"divine-crm/internal/services"
 	"github.com/gofiber/fiber/v2"
 )
 
-// LeadHandler handles lead HTTP requests
+// LeadHandler is DEPRECATED
+// Use ContactHandler instead with filtering by ContactStatus = "Leads"
 type LeadHandler struct {
-	repo *repository.LeadRepository
+	contactHandler *ContactHandler
 }
 
-// NewLeadHandler creates a new lead handler
-func NewLeadHandler(repo *repository.LeadRepository) *LeadHandler {
-	return &LeadHandler{repo: repo}
+// NewLeadHandler creates a lead handler (deprecated - use ContactHandler)
+func NewLeadHandler(contactService *services.ContactService) *LeadHandler {
+	return &LeadHandler{
+		contactHandler: NewContactHandler(contactService),
+	}
 }
 
-// GetAll handles GET /leads
+// GetAll returns all leads (contacts with status = "Leads")
 func (h *LeadHandler) GetAll(c *fiber.Ctx) error {
-	leads, err := h.repo.FindAll()
-	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to fetch leads", err)
-	}
-	return utils.SuccessResponse(c, leads)
+	// Set query parameter to filter by Leads
+	c.Request().URI().SetQueryString("status=Leads")
+	return h.contactHandler.GetByStatus(c)
 }
 
-// GetByID handles GET /leads/:id
+// GetByID returns a lead by ID
 func (h *LeadHandler) GetByID(c *fiber.Ctx) error {
-	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
-	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid ID", err)
-	}
-
-	lead, err := h.repo.FindByID(uint(id))
-	if err != nil {
-		return utils.NotFoundResponse(c, "Lead")
-	}
-	return utils.SuccessResponse(c, lead)
+	return h.contactHandler.GetByID(c)
 }
 
-// Create handles POST /leads
+// Create creates a new lead
 func (h *LeadHandler) Create(c *fiber.Ctx) error {
-	var lead models.Lead
-	if err := c.BodyParser(&lead); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body", err)
-	}
-
-	if err := h.repo.Create(&lead); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to create lead", err)
-	}
-
-	return c.Status(fiber.StatusCreated).JSON(utils.StandardResponse{
-		Success: true,
-		Data:    lead,
+	// This would need special handling to set ContactStatus = "Leads"
+	return c.Status(fiber.StatusGone).JSON(fiber.Map{
+		"error": "This endpoint is deprecated. Use /api/v1/contacts instead with contact_status=Leads",
 	})
 }
 
-// Update handles PUT /leads/:id
+// Update updates a lead
 func (h *LeadHandler) Update(c *fiber.Ctx) error {
-	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
-	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid ID", err)
-	}
-
-	lead, err := h.repo.FindByID(uint(id))
-	if err != nil {
-		return utils.NotFoundResponse(c, "Lead")
-	}
-
-	if err := c.BodyParser(lead); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body", err)
-	}
-
-	if err := h.repo.Update(lead); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to update lead", err)
-	}
-
-	return utils.SuccessResponse(c, lead)
+	return h.contactHandler.Update(c)
 }
 
-// Delete handles DELETE /leads/:id
+// Delete deletes a lead
 func (h *LeadHandler) Delete(c *fiber.Ctx) error {
-	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
-	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid ID", err)
-	}
-
-	if err := h.repo.Delete(uint(id)); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to delete lead", err)
-	}
-
-	return utils.SuccessMessageResponse(c, "Lead deleted successfully", nil)
+	return h.contactHandler.Delete(c)
 }

@@ -1,12 +1,15 @@
+
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database with pgvector
   postgres:
-    image: postgres:15-alpine
-    container_name: divine-postgres
+    image: pgvector/pgvector:pg16  # ✅ Use official pgvector image
+    container_name: divine-postgres  # ✅ Match with your commands (dash, not underscore)
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: dahsyan80
+      POSTGRES_PASSWORD: dahsyan80  # ✅ Match with your .env
       POSTGRES_DB: divine_crm
+      POSTGRES_INITDB_ARGS: "-E UTF8"
     ports:
       - "5432:5432"
     volumes:
@@ -19,94 +22,72 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    container_name: divine-redis
-    ports:
-      - "6379:6379"
-    networks:
-      - divine-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Auth Service
-  auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
-    container_name: divine-auth-service
-    ports:
-      - "3001:3001"
-    environment:
-      - PORT=3001
-      # ✅ FIXED: Match PostgreSQL credentials and use service name
-      - DATABASE_URL=postgresql://postgres:dahsyan80@postgres:5432/divine_crm?sslmode=disable
-      - JWT_SECRET=${JWT_SECRET:-divine-crm-secret-key-change-in-production}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - divine-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   # CRM Service
   crm-service:
     build:
       context: ./crm-service
       dockerfile: Dockerfile
-    container_name: divine-crm-service
-    env_file:
-      - .env  # ✅ Load additional env vars from .env file
+    container_name: divine-crm-service  # ✅ Use dash for consistency
+    restart: unless-stopped
     ports:
       - "3002:3002"
     environment:
-      - PORT=3002
-      - DATABASE_URL=postgresql://postgres:dahsyan80@postgres:5432/divine_crm?sslmode=disable  # ✅ Correct!
-      - JWT_SECRET=${JWT_SECRET:-divine-crm-secret-key-change-in-production}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - GROK_API_KEY=${GROK_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-divine-crm-webhook-2025}  # ✅ Match your actual token
-      - INSTAGRAM_VERIFY_TOKEN=${INSTAGRAM_VERIFY_TOKEN:-divine-crm-webhook-2025}
-      - TELEGRAM_VERIFY_TOKEN=${TELEGRAM_VERIFY_TOKEN:-divine-crm-webhook-2025}
+      # Database
+      DB_HOST: divine-postgres  # ✅ Match container name
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: dahsyan80
+      DB_NAME: divine_crm
+      DB_SSLMODE: disable
+      
+      # Server
+      SERVER_PORT: 3002
+      SERVER_HOST: 0.0.0.0
+      ENVIRONMENT: production
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-divine-crm-super-secret-key}
+      JWT_EXPIRATION_HOURS: 24
+      
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: gpt-3.5-turbo
+      OPENAI_ENDPOINT: https://api.openai.com/v1/chat/completions
+      
+      # WhatsApp
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      WHATSAPP_BUSINESS_ACCOUNT_ID: ${WHATSAPP_BUSINESS_ACCOUNT_ID}
+      WHATSAPP_VERIFY_TOKEN: divine_webhook_verify_123
+      WHATSAPP_API_VERSION: v18.0
+      
+      # Instagram
+      INSTAGRAM_ACCESS_TOKEN: ${INSTAGRAM_ACCESS_TOKEN}
+      INSTAGRAM_PAGE_ID: ${INSTAGRAM_PAGE_ID}
+      INSTAGRAM_VERIFY_TOKEN: divine_webhook_verify_123
+      
+      # Telegram
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL}
+      TELEGRAM_VERIFY_TOKEN: divine_webhook_verify_123
+      
+      # CORS
+      CORS_ALLOW_ORIGINS: "*"
+      CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,PATCH,OPTIONS"
+      CORS_ALLOW_HEADERS: "Origin,Content-Type,Accept,Authorization"
+      CORS_ALLOW_CREDENTIALS: "true"
+      CORS_MAX_AGE: 3600
+      
+      # Rate Limiting
+      RATE_LIMIT_REQUESTS_PER_MINUTE: 60
+      
+      # Logging
+      LOG_LEVEL: info
     depends_on:
       postgres:
-        condition: service_healthy
-      auth-service:
-        condition: service_started
+        condition: service_healthy  # ✅ Wait for postgres to be ready
     networks:
       - divine-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # API Gateway (Optional - Nginx)
-  nginx:
-    image: nginx:alpine
-    container_name: divine-nginx
-    ports:
-      - "8080:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - auth-service
-      - crm-service
-    networks:
-      - divine-network
-    restart: unless-stopped
 
 networks:
   divine-network:

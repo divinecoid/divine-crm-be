@@ -7,119 +7,79 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"time"
+	"os"
 )
 
 type WhatsAppService struct {
-	platformRepo *repository.PlatformRepository
-	logger       *utils.Logger
+	repo   *repository.PlatformRepository
+	logger *utils.Logger
+	client *http.Client
 }
 
-func NewWhatsAppService(platformRepo *repository.PlatformRepository, logger *utils.Logger) *WhatsAppService {
+func NewWhatsAppService(repo *repository.PlatformRepository, logger *utils.Logger) *WhatsAppService {
 	return &WhatsAppService{
-		platformRepo: platformRepo,
-		logger:       logger,
+		repo:   repo,
+		logger: logger,
+		client: &http.Client{},
 	}
 }
 
-// WhatsApp API request structure
-type WhatsAppMessageRequest struct {
-	MessagingProduct string `json:"messaging_product"`
-	RecipientType    string `json:"recipient_type"`
-	To               string `json:"to"`
-	Type             string `json:"type"`
-	Text             struct {
-		PreviewURL bool   `json:"preview_url"`
-		Body       string `json:"body"`
-	} `json:"text"`
-}
+// SendMessage sends a message via WhatsApp Business API
+func (s *WhatsAppService) SendMessage(to, message string) error {
+	// Get WhatsApp credentials from env
+	accessToken := os.Getenv("WHATSAPP_ACCESS_TOKEN")
+	phoneNumberID := os.Getenv("WHATSAPP_PHONE_NUMBER_ID")
+	apiVersion := os.Getenv("WHATSAPP_API_VERSION")
 
-// SendMessage sends a WhatsApp message
-func (s *WhatsAppService) SendMessage(phone, message string) error {
-	// ✅ Safe nil checks
-	if s == nil {
-		log.Printf("❌ WhatsAppService is nil")
-		return fmt.Errorf("whatsapp service is nil")
+	if accessToken == "" || phoneNumberID == "" {
+		return fmt.Errorf("WhatsApp credentials not configured")
 	}
 
-	if s.logger != nil {
-		s.logger.Info("Attempting to send WhatsApp message", "phone", phone)
-	} else {
-		log.Printf("📤 Attempting to send WhatsApp message to %s", phone)
-	}
-
-	if s.platformRepo == nil {
-		log.Printf("⚠️  Platform repository is nil, skipping WhatsApp send")
-		return nil // Don't fail
-	}
-
-	// Get WhatsApp platform configuration
-	platform, err := s.platformRepo.GetByPlatform("WhatsApp")
-
-	// ✅ Handle all error cases safely
-	if err != nil || platform == nil {
-		if s.logger != nil {
-			s.logger.Warn("WhatsApp platform not configured", "error", err)
-		}
-		log.Printf("⚠️  WhatsApp not configured in database")
-		log.Printf("💬 Message would have been sent: %s", message)
-		log.Printf("📝 To setup WhatsApp, add config to connected_platforms table")
-		return nil // Don't fail - just skip sending
-	}
-
-	// ✅ Extra safety check
-	if platform == nil {
-		log.Printf("⚠️  Platform object is nil after query")
-		return nil
-	}
-
-	if !platform.Active {
-		if s.logger != nil {
-			s.logger.Warn("WhatsApp platform is not active")
-		}
-		log.Printf("⚠️  WhatsApp platform exists but is not active")
-		return nil
-	}
-
-	// Validate required fields
-	if platform.PhoneNumberID == "" || platform.Token == "" {
-		log.Printf("⚠️  WhatsApp config incomplete (missing phone_number_id or token)")
-		return nil
-	}
-
-	// Prepare request
-	req := WhatsAppMessageRequest{
-		MessagingProduct: "whatsapp",
-		RecipientType:    "individual",
-		To:               phone,
-		Type:             "text",
-	}
-	req.Text.Body = message
-	req.Text.PreviewURL = false
-
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+	if apiVersion == "" {
+		apiVersion = "v18.0"
 	}
 
 	// Build API URL
-	apiURL := fmt.Sprintf("https://graph.facebook.com/v18.0/%s/messages", platform.PhoneNumberID)
+	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/messages", apiVersion, phoneNumberID)
+
+	s.logger.Info("📤 Sending WhatsApp message",
+		"to", to,
+		"message_length", len(message),
+	)
+
+	// Prepare request body
+	reqBody := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"recipient_type":    "individual",
+		"to":                to,
+		"type":              "text",
+		"text": map[string]string{
+			"preview_url": "false",
+			"body":        message,
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		s.logger.Error("Failed to marshal request", "error", err)
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
 
 	// Create HTTP request
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
+		s.logger.Error("Failed to create request", "error", err)
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+platform.Token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	// Send request
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
+	// Execute request
+	resp, err := s.client.Do(req)
 	if err != nil {
+		s.logger.Error("Failed to send request", "error", err)
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -127,17 +87,68 @@ func (s *WhatsAppService) SendMessage(phone, message string) error {
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		s.logger.Error("Failed to read response", "error", err)
 		return fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("WhatsApp API error [%d]: %s", resp.StatusCode, string(body))
+	// Check response status
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		s.logger.Error("WhatsApp API error",
+			"status", resp.StatusCode,
+			"response", string(body),
+		)
+		return fmt.Errorf("WhatsApp API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	if s.logger != nil {
-		s.logger.Info("WhatsApp message sent successfully", "phone", phone)
+	s.logger.Info("✅ WhatsApp message sent successfully",
+		"status", resp.StatusCode,
+		"response", string(body),
+	)
+
+	return nil
+}
+
+// SendTemplateMessage sends a template message
+func (s *WhatsAppService) SendTemplateMessage(to, templateName string, params map[string]interface{}) error {
+	accessToken := os.Getenv("WHATSAPP_ACCESS_TOKEN")
+	phoneNumberID := os.Getenv("WHATSAPP_PHONE_NUMBER_ID")
+	apiVersion := os.Getenv("WHATSAPP_API_VERSION")
+
+	if accessToken == "" || phoneNumberID == "" {
+		return fmt.Errorf("WhatsApp credentials not configured")
 	}
-	log.Printf("✅ WhatsApp message sent successfully to %s", phone)
+
+	if apiVersion == "" {
+		apiVersion = "v18.0"
+	}
+
+	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/messages", apiVersion, phoneNumberID)
+
+	reqBody := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"to":                to,
+		"type":              "template",
+		"template": map[string]interface{}{
+			"name":     templateName,
+			"language": map[string]string{"code": "id"},
+		},
+	}
+
+	jsonData, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("WhatsApp API error: %s", string(body))
+	}
 
 	return nil
 }

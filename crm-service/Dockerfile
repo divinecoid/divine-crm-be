@@ -1,45 +1,63 @@
-# Build stage
-FROM golang:1.21-alpine AS builder
+# ==================== BUILD STAGE ====================
+FROM golang:1.23-alpine AS builder
 
-RUN apk add --no-cache git make
+# Install build dependencies
+RUN apk add --no-cache git make gcc musl-dev
 
 WORKDIR /app
 
 # Copy go mod files
 COPY go.mod go.sum ./
+
+# Download dependencies
 RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-s -w' -o divine-crm cmd/server/main.go
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -a -installsuffix cgo \
+    -ldflags '-s -w -extldflags "-static"' \
+    -o divine-crm ./cmd/server
 
-# Runtime stage
+# ==================== RUNTIME STAGE ====================
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates tzdata
+# Install runtime dependencies
+RUN apk --no-cache add \
+    ca-certificates \
+    tzdata \
+    curl
 
+# Set timezone
+ENV TZ=Asia/Jakarta
+
+# Create non-root user
 RUN addgroup -g 1000 appuser && \
-  adduser -D -u 1000 -G appuser appuser
+    adduser -D -u 1000 -G appuser appuser
 
-WORKDIR /root/
+# Set working directory
+WORKDIR /app
 
-# Copy binary
+# Copy binary from builder
 COPY --from=builder /app/divine-crm .
 
-# Copy migrations if exists (FIXED!)
-# Option 1: Skip if not exists
-RUN mkdir -p ./migrations
 
-# Option 2: Copy only if exists (comment out line 39-40 if using this)
-# COPY --from=builder /app/migrations ./migrations 2>/dev/null || true
 
-# Change ownership
-RUN chown -R appuser:appuser /root/
+# Create necessary directories
+RUN mkdir -p /app/logs /app/uploads && \
+    chown -R appuser:appuser /app
 
+# Switch to non-root user
 USER appuser
 
+# Expose port
 EXPOSE 3002
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3002/api/v1/health || exit 1
+
+# Run the application
 CMD ["./divine-crm"]

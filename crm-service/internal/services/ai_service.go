@@ -1,146 +1,147 @@
 package services
 
 import (
-	"bytes"
+	"context"
 	"divine-crm/internal/config"
-	"divine-crm/internal/models"
 	"divine-crm/internal/repository"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 )
 
-// AIService handles AI processing logic
 type AIService struct {
-	repo   *repository.AIRepository
-	config *config.Config
+	repo          *repository.AIRepository
+	vectorService *VectorService // ✅ Add this
+	config        *config.Config
+	client        *http.Client
 }
 
-// NewAIService creates a new AI service
-func NewAIService(repo *repository.AIRepository, cfg *config.Config) *AIService {
+func NewAIService(repo *repository.AIRepository, vectorService *VectorService, cfg *config.Config) *AIService {
 	return &AIService{
-		repo:   repo,
-		config: cfg,
+		repo:          repo,
+		vectorService: vectorService,
+		config:        cfg,
+		client:        &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
-// AIRequest represents an AI API request
-type AIRequest struct {
-	Model       string      `json:"model"`
-	Messages    []AIMessage `json:"messages"`
-	Temperature float64     `json:"temperature,omitempty"`
-	MaxTokens   int         `json:"max_tokens,omitempty"`
-}
+// GenerateResponse generates AI response with RAG
+func (s *AIService) GenerateResponse(ctx context.Context, userMessage string, contactName string, contactID uint) (string, error) {
+	// 1. Build RAG context from vector search
+	ragContext := ""
+	if s.vectorService != nil {
+		if context, err := s.vectorService.BuildRAGContext(userMessage); err == nil {
+			ragContext = context
+		}
+	}
 
-// AIMessage represents a message in AI request
-type AIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
+	// 2. Build system prompt with RAG context
+	systemPrompt := s.buildSystemPrompt(ragContext)
 
-// AIResponse represents an AI API response
-type AIResponse struct {
-	ID      string `json:"id"`
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Usage struct {
-		TotalTokens int `json:"total_tokens"`
-	} `json:"usage"`
-}
-
-// ProcessMessage processes a message with AI
-func (s *AIService) ProcessMessage(message string, agentID uint) (string, int, error) {
-	// Get agent
-	agent, err := s.repo.GetAgentByID(agentID)
+	// 3. Generate response with OpenAI
+	response, err := s.generateWithOpenAI(ctx, systemPrompt, userMessage, contactName)
 	if err != nil {
-		return "", 0, fmt.Errorf("agent not found: %w", err)
+		return "", err
 	}
 
-	// Get AI configuration
-	config, err := s.repo.GetConfiguration(agent.AIEngine)
-	if err != nil {
-		return "", 0, fmt.Errorf("AI configuration not found: %w", err)
+	// 4. Save chat history with embeddings (async)
+	if s.vectorService != nil {
+		go func() {
+			_ = s.vectorService.SaveChatWithEmbedding(
+				contactID,
+				userMessage,
+				response,
+				"neutral", // Can be enhanced with sentiment analysis
+				"inquiry", // Can be enhanced with intent classification
+			)
+		}()
 	}
 
-	// Call AI API
-	return s.callAI(config, agent.BasicPrompt, message)
+	return response, nil
 }
 
-// ProcessWithActiveAgent processes a message with the active agent
-func (s *AIService) ProcessWithActiveAgent(message string) (string, int, error) {
-	// Get active agent
-	agent, err := s.repo.GetActiveAgent()
-	if err != nil {
-		return "", 0, fmt.Errorf("no active AI agent found: %w", err)
+func (s *AIService) buildSystemPrompt(ragContext string) string {
+	basePrompt := `Anda adalah AI assistant untuk Divine CRM, sebuah platform CRM berbasis AI.
+
+Tugas Anda:
+- Jawab pertanyaan customer dengan ramah, profesional, dan helpful
+- Gunakan informasi dari knowledge base yang disediakan
+- Jika customer menanyakan harga atau fitur, jelaskan dengan detail
+- Jika tidak yakin atau tidak ada info di knowledge base, arahkan ke tim support
+- Selalu akhiri dengan tawaran bantuan lebih lanjut
+- Gunakan emoji secukupnya untuk membuat respons lebih friendly
+
+Tone: Ramah, profesional, helpful, natural (seperti chat biasa)`
+
+	if ragContext != "" {
+		basePrompt += "\n\n" + ragContext
+		basePrompt += "\n\nGunakan informasi di atas untuk menjawab pertanyaan customer."
 	}
 
-	// Get AI configuration
-	config, err := s.repo.GetConfiguration(agent.AIEngine)
-	if err != nil {
-		return "", 0, fmt.Errorf("AI configuration not found: %w", err)
-	}
-
-	// Call AI API
-	return s.callAI(config, agent.BasicPrompt, message)
+	return basePrompt
 }
 
-func (s *AIService) callAI(config *models.AIConfiguration, systemPrompt, userMessage string) (string, int, error) {
-	// Prepare request
-	aiReq := AIRequest{
-		Model: config.Model,
-		Messages: []AIMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userMessage},
+func (s *AIService) generateWithOpenAI(ctx context.Context, systemPrompt, userMessage, contactName string) (string, error) {
+	reqBody := map[string]interface{}{
+		"model": s.config.OpenAI.Model,
+		"messages": []map[string]string{
+			{
+				"role":    "system",
+				"content": systemPrompt,
+			},
+			{
+				"role":    "user",
+				"content": fmt.Sprintf("%s bertanya: %s", contactName, userMessage),
+			},
 		},
-		Temperature: 0.7,
-		MaxTokens:   500,
+		"temperature": 0.7,
+		"max_tokens":  500,
 	}
 
-	reqBody, err := json.Marshal(aiReq)
+	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to marshal request: %w", err)
+		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest("POST", config.Endpoint, bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", s.config.OpenAI.Endpoint, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+config.Token)
+	req.Header.Set("Authorization", "Bearer "+s.config.OpenAI.APIKey)
 
-	// Send request
-	client := &http.Client{Timeout: s.config.AI.RequestTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to send request: %w", err)
+		return "", fmt.Errorf("failed to call OpenAI API: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to read response: %w", err)
+		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", 0, fmt.Errorf("AI API error [%d]: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("OpenAI API error: %s", string(body))
 	}
 
-	// Parse response
-	var aiResp AIResponse
-	if err := json.Unmarshal(body, &aiResp); err != nil {
-		return "", 0, fmt.Errorf("failed to parse response: %w", err)
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if len(aiResp.Choices) == 0 {
-		return "", 0, fmt.Errorf("no response from AI")
+	choices, ok := result["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return "", fmt.Errorf("no choices in response")
 	}
 
-	return aiResp.Choices[0].Message.Content, aiResp.Usage.TotalTokens, nil
+	choice := choices[0].(map[string]interface{})
+	message := choice["message"].(map[string]interface{})
+	content := message["content"].(string)
+
+	return strings.TrimSpace(content), nil
 }

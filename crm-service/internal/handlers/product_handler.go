@@ -2,96 +2,103 @@ package handlers
 
 import (
 	"divine-crm/internal/models"
-	"divine-crm/internal/repository"
-	"divine-crm/internal/utils"
-	"strconv"
-
+	"divine-crm/internal/services"
 	"github.com/gofiber/fiber/v2"
+	"strconv"
 )
 
-// ProductHandler handles product HTTP requests
 type ProductHandler struct {
-	repo *repository.ProductRepository
+	service *services.ProductService
 }
 
-// NewProductHandler creates a new product handler
-func NewProductHandler(repo *repository.ProductRepository) *ProductHandler {
-	return &ProductHandler{repo: repo}
+func NewProductHandler(service *services.ProductService) *ProductHandler {
+	return &ProductHandler{service: service}
 }
 
-// GetAll handles GET /products
 func (h *ProductHandler) GetAll(c *fiber.Ctx) error {
-	products, err := h.repo.FindAll()
+	products, err := h.service.GetAll()
 	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to fetch products", err)
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return utils.SuccessResponse(c, products)
+	return c.JSON(fiber.Map{"data": products})
 }
 
-// GetByID handles GET /products/:id
 func (h *ProductHandler) GetByID(c *fiber.Ctx) error {
-	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid ID", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
 	}
 
-	product, err := h.repo.FindByID(uint(id))
+	product, err := h.service.GetByID(uint(id))
 	if err != nil {
-		return utils.NotFoundResponse(c, "Product")
+		return c.Status(404).JSON(fiber.Map{"error": "Product not found"})
 	}
-	return utils.SuccessResponse(c, product)
+
+	return c.JSON(fiber.Map{"data": product})
 }
 
-// Create handles POST /products
+func (h *ProductHandler) GetActive(c *fiber.Ctx) error {
+	products, err := h.service.GetActiveProducts()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": products})
+}
+
+func (h *ProductHandler) Search(c *fiber.Ctx) error {
+	query := c.Query("q")
+	if query == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Search query required"})
+	}
+
+	products, err := h.service.SearchProducts(query)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": products})
+}
+
 func (h *ProductHandler) Create(c *fiber.Ctx) error {
 	var product models.Product
 	if err := c.BodyParser(&product); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	if err := h.repo.Create(&product); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to create product", err)
+	if err := h.service.Create(&product); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(utils.StandardResponse{
-		Success: true,
-		Data:    product,
-	})
+	return c.Status(201).JSON(fiber.Map{"data": product})
 }
 
-// Update handles PUT /products/:id
 func (h *ProductHandler) Update(c *fiber.Ctx) error {
-	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid ID", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
 	}
 
-	product, err := h.repo.FindByID(uint(id))
-	if err != nil {
-		return utils.NotFoundResponse(c, "Product")
+	var product models.Product
+	if err := c.BodyParser(&product); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	if err := c.BodyParser(product); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid request body", err)
+	product.ID = uint(id)
+	if err := h.service.Update(&product); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	if err := h.repo.Update(product); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to update product", err)
-	}
-
-	return utils.SuccessResponse(c, product)
+	return c.JSON(fiber.Map{"data": product})
 }
 
-// Delete handles DELETE /products/:id
 func (h *ProductHandler) Delete(c *fiber.Ctx) error {
-	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		return utils.ErrorResponse(c, fiber.StatusBadRequest, "Invalid ID", err)
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid ID"})
 	}
 
-	if err := h.repo.Delete(uint(id)); err != nil {
-		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Failed to delete product", err)
+	if err := h.service.Delete(uint(id)); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return utils.SuccessMessageResponse(c, "Product deleted successfully", nil)
+	return c.JSON(fiber.Map{"message": "Product deleted successfully"})
 }

@@ -1,31 +1,34 @@
 package services
 
 import (
+	"context"
 	"divine-crm/internal/models"
 	"divine-crm/internal/repository"
 	"divine-crm/internal/utils"
+	"strings"
 	"time"
 )
 
-// ChatService handles chat business logic
 type ChatService struct {
 	chatRepo       *repository.ChatRepository
 	contactService *ContactService
 	aiService      *AIService
+	productService *ProductService
 	logger         *utils.Logger
 }
 
-// NewChatService creates a new chat service
 func NewChatService(
 	chatRepo *repository.ChatRepository,
 	contactService *ContactService,
 	aiService *AIService,
+	productService *ProductService,
 	logger *utils.Logger,
 ) *ChatService {
 	return &ChatService{
 		chatRepo:       chatRepo,
 		contactService: contactService,
 		aiService:      aiService,
+		productService: productService,
 		logger:         logger,
 	}
 }
@@ -38,6 +41,21 @@ func (s *ChatService) GetAll() ([]models.ChatMessage, error) {
 // GetByID returns a chat message by ID
 func (s *ChatService) GetByID(id uint) (*models.ChatMessage, error) {
 	return s.chatRepo.FindByID(id)
+}
+
+// GetByStatus returns chat messages by status
+func (s *ChatService) GetByStatus(status string) ([]models.ChatMessage, error) {
+	return s.chatRepo.FindByStatus(status)
+}
+
+// GetByContactID returns all messages for a specific contact
+func (s *ChatService) GetByContactID(contactID uint) ([]models.ChatMessage, error) {
+	return s.chatRepo.FindByContactID(contactID)
+}
+
+// GetByChannel returns messages filtered by channel
+func (s *ChatService) GetByChannel(channel string) ([]models.ChatMessage, error) {
+	return s.chatRepo.FindByChannel(channel)
 }
 
 // Create creates a new chat message
@@ -80,30 +98,119 @@ func (s *ChatService) Resolve(id uint) error {
 	return s.chatRepo.Update(message)
 }
 
-// ProcessIncomingMessage processes an incoming message and generates AI response
+// TakeOver - Human agent takes over from AI
+func (s *ChatService) TakeOver(id uint, agentName string) error {
+	message, err := s.chatRepo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	message.AssignedTo = "Human"
+	message.AssignedAgent = agentName
+	message.Status = "Assigned"
+
+	s.logger.Info("Human agent taking over chat", "id", id, "agent", agentName)
+	return s.chatRepo.Update(message)
+}
+
+// BackToAI - Return chat back to AI
+func (s *ChatService) BackToAI(id uint) error {
+	message, err := s.chatRepo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	message.AssignedTo = "AI Bot"
+	message.AssignedAgent = "AI Assistant"
+	message.Status = "Unassigned"
+
+	s.logger.Info("Returning chat to AI", "id", id)
+	return s.chatRepo.Update(message)
+}
+
+// AddLabel adds a label to a chat message
+func (s *ChatService) AddLabel(id uint, labelID string) error {
+	message, err := s.chatRepo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	// Add label to comma-separated list
+	if message.Labels == "" {
+		message.Labels = labelID
+	} else {
+		// Check if label already exists
+		labels := strings.Split(message.Labels, ",")
+		for _, l := range labels {
+			if strings.TrimSpace(l) == labelID {
+				return nil // Label already exists
+			}
+		}
+		message.Labels = message.Labels + "," + labelID
+	}
+
+	s.logger.Info("Adding label to chat", "id", id, "label", labelID)
+	return s.chatRepo.Update(message)
+}
+
+// GetStats returns chat statistics
+func (s *ChatService) GetStats() (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// Count by status
+	unassigned, _ := s.chatRepo.CountByStatus("Unassigned")
+	assigned, _ := s.chatRepo.CountByStatus("Assigned")
+	resolved, _ := s.chatRepo.CountByStatus("Resolved")
+
+	stats["unassigned"] = unassigned
+	stats["assigned"] = assigned
+	stats["resolved"] = resolved
+	stats["total"] = unassigned + assigned + resolved
+
+	// Count by channel
+	whatsapp, _ := s.chatRepo.CountByChannel("WhatsApp")
+	instagram, _ := s.chatRepo.CountByChannel("Instagram")
+	telegram, _ := s.chatRepo.CountByChannel("Telegram")
+
+	stats["whatsapp"] = whatsapp
+	stats["instagram"] = instagram
+	stats["telegram"] = telegram
+
+	// Total tokens used
+	totalTokens, _ := s.chatRepo.GetTotalTokens()
+	stats["total_tokens"] = totalTokens
+
+	return stats, nil
+}
+
+// ProcessIncomingMessage processes an incoming message and generates AI response with RAG
 func (s *ChatService) ProcessIncomingMessage(
 	platform, phone, name, message string,
 ) (*models.ChatMessage, string, error) {
 
-	s.logger.Info("ChatService: Starting to process incoming message")
+	s.logger.Info("💬 Processing incoming message",
+		"platform", platform,
+		"phone", phone,
+		"name", name,
+	)
 
-	// 1. Get or create contact using ContactService method
-	s.logger.Info("ChatService: Getting or creating contact...", "phone", phone, "name", name)
-
-	// ✅ Use the GetOrCreateByChannelID method from ContactService
+	// 1. Get or create contact
 	contact, err := s.contactService.GetOrCreateByChannelID(platform, phone, name)
 	if err != nil {
-		s.logger.Error("ChatService: Failed to get/create contact", "error", err)
+		s.logger.Error("Failed to get/create contact", "error", err)
 		return nil, "", err
 	}
 
-	s.logger.Info("ChatService: Contact ready", "contact_id", contact.ID, "code", contact.Code)
+	s.logger.Info("✅ Contact ready",
+		"contact_id", contact.ID,
+		"code", contact.Code,
+		"name", contact.Name,
+	)
 
 	// 2. Save incoming message
-	s.logger.Info("ChatService: Saving incoming message...")
 	incomingMsg := &models.ChatMessage{
 		ContactID:   contact.ID,
-		ContactName: name,
+		ContactName: contact.Name,
 		Message:     message,
 		Channel:     platform,
 		Status:      "Unassigned",
@@ -112,34 +219,38 @@ func (s *ChatService) ProcessIncomingMessage(
 	}
 
 	if err := s.chatRepo.Create(incomingMsg); err != nil {
-		s.logger.Error("ChatService: Failed to save incoming message", "error", err)
+		s.logger.Error("Failed to save incoming message", "error", err)
 		return nil, "", err
 	}
-	s.logger.Info("ChatService: Incoming message saved", "msg_id", incomingMsg.ID)
+	s.logger.Info("📝 Incoming message saved", "msg_id", incomingMsg.ID)
 
-	// 3. Get AI response
-	s.logger.Info("ChatService: Requesting AI response...")
+	// 3. Generate AI response with RAG context
+	ctx := context.Background()
+	s.logger.Info("🤖 Generating AI response with RAG...")
 
-	// ✅ Use ProcessWithActiveAgent (no agentID parameter needed)
-	aiResponse, tokens, err := s.aiService.ProcessWithActiveAgent(message)
+	aiResponse, err := s.aiService.GenerateResponse(
+		ctx,
+		message,
+		contact.Name,
+		contact.ID, // ✅ Pass contactID for chat history
+	)
+
 	if err != nil {
-		s.logger.Error("ChatService: AI processing failed", "error", err)
-		// Return a default response instead of failing
-		aiResponse = "Maaf, saat ini sistem sedang sibuk. Tim kami akan segera menghubungi Anda."
-		tokens = 0
+		s.logger.Error("AI processing failed", "error", err)
+		aiResponse = "Maaf, saat ini sistem sedang sibuk. Tim kami akan segera menghubungi Anda. 🙏"
+	} else {
+		s.logger.Info("✅ AI response generated successfully")
 	}
-	s.logger.Info("ChatService: AI response received", "tokens", tokens)
 
-	// 4. Save outgoing message (with AI response)
-	s.logger.Info("ChatService: Saving outgoing message...")
+	// 4. Save outgoing message
 	outgoingMsg := &models.ChatMessage{
 		ContactID:     contact.ID,
-		ContactName:   name,
-		Message:       message,    // Original user message
-		Response:      aiResponse, // AI response
+		ContactName:   contact.Name,
+		Message:       message,
+		Response:      aiResponse,
 		Channel:       platform,
 		Status:        "Answered",
-		TokensUsed:    tokens,
+		TokensUsed:    0, // Can be calculated if needed
 		AssignedTo:    "AI Bot",
 		AssignedAgent: "AI Assistant",
 		CreatedAt:     time.Now(),
@@ -147,12 +258,11 @@ func (s *ChatService) ProcessIncomingMessage(
 	}
 
 	if err := s.chatRepo.Create(outgoingMsg); err != nil {
-		s.logger.Error("ChatService: Failed to save outgoing message", "error", err)
-		// Still return AI response even if save fails
+		s.logger.Error("Failed to save outgoing message", "error", err)
 		return nil, aiResponse, err
 	}
-	s.logger.Info("ChatService: Outgoing message saved", "msg_id", outgoingMsg.ID)
+	s.logger.Info("✅ Outgoing message saved", "msg_id", outgoingMsg.ID)
 
-	s.logger.Info("ChatService: Message processing completed successfully")
+	s.logger.Info("🎉 Message processing completed successfully")
 	return outgoingMsg, aiResponse, nil
 }

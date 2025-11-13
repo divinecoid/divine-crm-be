@@ -14,14 +14,34 @@ func NewPlatformRepository(db *gorm.DB) *PlatformRepository {
 	return &PlatformRepository{db: db}
 }
 
-// GetByPlatform gets platform configuration by platform name
+func (r *PlatformRepository) FindAll() ([]models.ConnectedPlatform, error) {
+	var platforms []models.ConnectedPlatform
+	err := r.db.Order("platform ASC").Find(&platforms).Error
+	return platforms, err
+}
+
+func (r *PlatformRepository) FindActive() ([]models.ConnectedPlatform, error) {
+	var platforms []models.ConnectedPlatform
+	err := r.db.Where("active = ?", true).Order("platform ASC").Find(&platforms).Error
+	return platforms, err
+}
+
+func (r *PlatformRepository) FindByID(id uint) (*models.ConnectedPlatform, error) {
+	var platform models.ConnectedPlatform
+	err := r.db.First(&platform, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &platform, err
+}
+
 func (r *PlatformRepository) GetByPlatform(platform string) (*models.ConnectedPlatform, error) {
 	var p models.ConnectedPlatform
 	err := r.db.Where("platform = ?", platform).First(&p).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil // Not found is ok
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -29,12 +49,14 @@ func (r *PlatformRepository) GetByPlatform(platform string) (*models.ConnectedPl
 	return &p, nil
 }
 
-// Create creates a new platform
 func (r *PlatformRepository) Create(platform *models.ConnectedPlatform) error {
 	return r.db.Create(platform).Error
 }
 
-// Update updates a platform
 func (r *PlatformRepository) Update(platform *models.ConnectedPlatform) error {
 	return r.db.Save(platform).Error
+}
+
+func (r *PlatformRepository) Delete(id uint) error {
+	return r.db.Delete(&models.ConnectedPlatform{}, id).Error
 }

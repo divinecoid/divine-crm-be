@@ -5,72 +5,88 @@ import (
 	"gorm.io/gorm"
 )
 
-// ChatRepository handles chat data operations
 type ChatRepository struct {
 	db *gorm.DB
 }
 
-// NewChatRepository creates a new chat repository
 func NewChatRepository(db *gorm.DB) *ChatRepository {
 	return &ChatRepository{db: db}
 }
 
-// FindAll returns all chat messages
 func (r *ChatRepository) FindAll() ([]models.ChatMessage, error) {
 	var messages []models.ChatMessage
-	err := r.db.Order("created_at desc").Find(&messages).Error
+	err := r.db.Preload("Contact").Order("created_at DESC").Find(&messages).Error
 	return messages, err
 }
 
-// FindByID returns a chat message by ID
 func (r *ChatRepository) FindByID(id uint) (*models.ChatMessage, error) {
 	var message models.ChatMessage
-	err := r.db.First(&message, id).Error
-	if err != nil {
-		return nil, err
-	}
-	return &message, nil
+	err := r.db.Preload("Contact").First(&message, id).Error
+	return &message, err
 }
 
-// FindByContactID returns all messages for a contact
-func (r *ChatRepository) FindByContactID(contactID uint) ([]models.ChatMessage, error) {
+func (r *ChatRepository) FindByStatus(status string) ([]models.ChatMessage, error) {
 	var messages []models.ChatMessage
-	err := r.db.Where("contact_id = ?", contactID).Order("created_at desc").Find(&messages).Error
+	err := r.db.Preload("Contact").
+		Where("status = ?", status).
+		Order("created_at DESC").
+		Find(&messages).Error
 	return messages, err
 }
 
-// Create creates a new chat message
+func (r *ChatRepository) FindByContactID(contactID uint) ([]models.ChatMessage, error) {
+	var messages []models.ChatMessage
+	err := r.db.Preload("Contact").
+		Where("contact_id = ?", contactID).
+		Order("created_at ASC").
+		Find(&messages).Error
+	return messages, err
+}
+
+func (r *ChatRepository) FindByChannel(channel string) ([]models.ChatMessage, error) {
+	var messages []models.ChatMessage
+	err := r.db.Preload("Contact").
+		Where("channel = ?", channel).
+		Order("created_at DESC").
+		Find(&messages).Error
+	return messages, err
+}
+
 func (r *ChatRepository) Create(message *models.ChatMessage) error {
 	return r.db.Create(message).Error
 }
 
-// Update updates a chat message
 func (r *ChatRepository) Update(message *models.ChatMessage) error {
 	return r.db.Save(message).Error
 }
 
-// Delete deletes a chat message
 func (r *ChatRepository) Delete(id uint) error {
 	return r.db.Delete(&models.ChatMessage{}, id).Error
 }
 
-// GetQuickReplies returns all quick replies
-func (r *ChatRepository) GetQuickReplies() ([]models.QuickReply, error) {
-	var replies []models.QuickReply
-	err := r.db.Where("active = ?", true).Find(&replies).Error
-	return replies, err
+// Statistics methods
+func (r *ChatRepository) CountByStatus(status string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.ChatMessage{}).Where("status = ?", status).Count(&count).Error
+	return count, err
 }
 
-// GetChatLabels returns all chat labels
-func (r *ChatRepository) GetChatLabels() ([]models.ChatLabel, error) {
-	var labels []models.ChatLabel
-	err := r.db.Find(&labels).Error
-	return labels, err
+func (r *ChatRepository) CountByChannel(channel string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.ChatMessage{}).Where("channel = ?", channel).Count(&count).Error
+	return count, err
 }
 
-// GetBroadcastTemplates returns all broadcast templates
-func (r *ChatRepository) GetBroadcastTemplates() ([]models.BroadcastTemplate, error) {
-	var templates []models.BroadcastTemplate
-	err := r.db.Find(&templates).Error
-	return templates, err
+func (r *ChatRepository) GetTotalTokens() (int64, error) {
+	var total int64
+	err := r.db.Model(&models.ChatMessage{}).Select("COALESCE(SUM(tokens_used), 0)").Scan(&total).Error
+	return total, err
+}
+
+func (r *ChatRepository) GetTodayCount() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.ChatMessage{}).
+		Where("DATE(created_at) = CURRENT_DATE").
+		Count(&count).Error
+	return count, err
 }

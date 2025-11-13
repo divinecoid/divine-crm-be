@@ -4,66 +4,59 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// StandardResponse is the standard API response format
-type StandardResponse struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
-	Error   string      `json:"error,omitempty"`
-}
-
-// SuccessResponse returns a success response
+// SuccessResponse sends a success response
 func SuccessResponse(c *fiber.Ctx, data interface{}) error {
-	return c.JSON(StandardResponse{
-		Success: true,
-		Data:    data,
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    data,
 	})
 }
 
-// SuccessMessageResponse returns a success response with message
-func SuccessMessageResponse(c *fiber.Ctx, message string, data interface{}) error {
-	return c.JSON(StandardResponse{
-		Success: true,
-		Message: message,
-		Data:    data,
+// ErrorResponse sends an error response
+func ErrorResponse(c *fiber.Ctx, statusCode int, message string) error {
+	return c.Status(statusCode).JSON(fiber.Map{
+		"success": false,
+		"error":   message,
 	})
 }
 
-// ErrorResponse returns an error response
-func ErrorResponse(c *fiber.Ctx, statusCode int, message string, err error) error {
-	response := StandardResponse{
-		Success: false,
-		Message: message,
-	}
-
-	if err != nil {
-		response.Error = err.Error()
-	}
-
-	return c.Status(statusCode).JSON(response)
+// UnauthorizedResponse sends a 401 unauthorized response
+func UnauthorizedResponse(c *fiber.Ctx, message string) error {
+	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+		"success": false,
+		"error":   message,
+	})
 }
 
-// ValidationErrorResponse returns a validation error response
-func ValidationErrorResponse(c *fiber.Ctx, errors interface{}) error {
+// ForbiddenResponse sends a 403 forbidden response
+func ForbiddenResponse(c *fiber.Ctx, message string) error {
+	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+		"success": false,
+		"error":   message,
+	})
+}
+
+// NotFoundResponse sends a 404 not found response
+func NotFoundResponse(c *fiber.Ctx, message string) error {
+	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+		"success": false,
+		"error":   message,
+	})
+}
+
+// BadRequestResponse sends a 400 bad request response
+func BadRequestResponse(c *fiber.Ctx, message string) error {
 	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 		"success": false,
-		"message": "Validation failed",
-		"errors":  errors,
+		"error":   message,
 	})
 }
 
-// NotFoundResponse returns a not found response
-func NotFoundResponse(c *fiber.Ctx, resource string) error {
-	return c.Status(fiber.StatusNotFound).JSON(StandardResponse{
-		Success: false,
-		Message: resource + " not found",
-	})
-}
-
-// UnauthorizedResponse returns an unauthorized response
-func UnauthorizedResponse(c *fiber.Ctx, message string) error {
-	return c.Status(fiber.StatusUnauthorized).JSON(StandardResponse{
-		Success: false,
-		Message: message,
+// ValidationErrorResponse sends a 422 validation error response
+func ValidationErrorResponse(c *fiber.Ctx, errors interface{}) error {
+	return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+		"success": false,
+		"error":   "Validation failed",
+		"details": errors,
 	})
 }
