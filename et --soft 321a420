@@ -1,0 +1,15 @@
+[33mcc50b6f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Update Broadcast, Quick Reply, Chat fix AI - TO - AI bug, chat labels, chat temp by AI, AI Agents assign to chat (Complete but still testing)
+[33m57d7ce8[m Connected with frontend, add keyword for temperature, add AI for telegram
+[33me19bf40[m Merging
+[33m325305e[m Connected with frontend, add keyword for temperature, add AI for telegram
+[33m321a420[m[33m ([m[1;31morigin/main[m[33m)[m fIXING
+[33m4035827[m Complete CRM + Vector
+[33m5db894d[m Whatsapp CRM + Vector
+[33m99019d6[m Refactored micro service + monorepo CRM Whatsapp Webhook with AI Agent (Not Clean Code) (>>Next Step was Connect with FE before going to Auth<<)
+[33ma158e60[m Refactored micro service + monorepo CRM Whatsapp Webhook with AI Agent (Not Clean Code) (>>Next Step was Connect with FE before going to Auth<<)
+[33m0534f5a[m First CRM Testing
+[33m918062b[m First test CRM
+[33me62792a[m CRM Testing Success
+[33m88ca541[m Test Dockerfile and setup AI API KEY, Postgres, WA Verify Token
+[33m553e8b3[m Revision from 5 services into 2 Services: Auth + CRM
+[33m39ea63b[m First Commit

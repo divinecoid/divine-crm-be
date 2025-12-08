@@ -1,0 +1,152 @@
+services:
+  # PostgreSQL Database with pgvector
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg16
+    container_name: divine-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dahsyan80
+      POSTGRES_DB: divine_crm
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - divine-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auth Service (Login, Register, User Management) - Port 3001
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: divine-auth-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      # Database
+      DB_HOST: divine-postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: dahsyan80
+      DB_NAME: divine_crm
+      DB_SSLMODE: disable
+      
+      # Server
+      SERVER_PORT: 3001
+      SERVER_HOST: 0.0.0.0
+      ENVIRONMENT: production
+      
+      # JWT (MUST match with crm-service)
+      JWT_SECRET: ${JWT_SECRET:-divine-crm-super-secret-key}
+      JWT_EXPIRATION_HOURS: 24
+      
+      # SMTP for Email Verification
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM:-Divine CRM}
+      
+      # URLs
+      APP_URL: ${APP_URL:-http://localhost:3001}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      
+      # CORS
+      CORS_ALLOW_ORIGINS: "*"
+      CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,PATCH,OPTIONS"
+      CORS_ALLOW_HEADERS: "Origin,Content-Type,Accept,Authorization"
+      CORS_ALLOW_CREDENTIALS: "true"
+      CORS_MAX_AGE: 3600
+      
+      # Logging
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - divine-network
+
+  # CRM Service (Masterdata, Chat, AI, Webhooks) - Port 3002
+  crm-service:
+    build:
+      context: ./crm-service
+      dockerfile: Dockerfile
+    container_name: divine-crm-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      # Database
+      DB_HOST: divine-postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: dahsyan80
+      DB_NAME: divine_crm
+      DB_SSLMODE: disable
+      
+      # Server
+      SERVER_PORT: 3002
+      SERVER_HOST: 0.0.0.0
+      ENVIRONMENT: production
+      
+      # JWT (MUST match with auth-service)
+      JWT_SECRET: ${JWT_SECRET:-divine-crm-super-secret-key}
+      JWT_EXPIRATION_HOURS: 24
+      
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: gpt-3.5-turbo
+      OPENAI_ENDPOINT: https://api.openai.com/v1/chat/completions
+      
+      # WhatsApp
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      WHATSAPP_BUSINESS_ACCOUNT_ID: ${WHATSAPP_BUSINESS_ACCOUNT_ID}
+      WHATSAPP_VERIFY_TOKEN: divine_webhook_verify_123
+      WHATSAPP_API_VERSION: v18.0
+      
+      # Instagram
+      INSTAGRAM_ACCESS_TOKEN: ${INSTAGRAM_ACCESS_TOKEN}
+      INSTAGRAM_PAGE_ID: ${INSTAGRAM_PAGE_ID}
+      INSTAGRAM_VERIFY_TOKEN: divine_webhook_verify_123
+      
+      # Telegram
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL}
+      TELEGRAM_VERIFY_TOKEN: divine_webhook_verify_123
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      
+      # CORS
+      CORS_ALLOW_ORIGINS: "*"
+      CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,PATCH,OPTIONS"
+      CORS_ALLOW_HEADERS: "Origin,Content-Type,Accept,Authorization"
+      CORS_ALLOW_CREDENTIALS: "true"
+      CORS_MAX_AGE: 3600
+      
+      # Rate Limiting
+      RATE_LIMIT_REQUESTS_PER_MINUTE: 60
+      
+      # Logging
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - divine-network
+
+networks:
+  divine-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

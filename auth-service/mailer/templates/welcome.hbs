@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Divine CRM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .header h1 {
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .header p {
+            color: #d1fae5;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        .content {
+            padding: 40px 30px;
+            background-color: #ffffff;
+        }
+        .greeting {
+            font-size: 22px;
+            color: #333333;
+            margin-bottom: 20px;
+        }
+        .message {
+            color: #555555;
+            font-size: 16px;
+            margin-bottom: 25px;
+        }
+        .role-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #ffffff;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 10px 0 25px 0;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 30px 0;
+        }
+        .feature-card {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .feature-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        .feature-card h4 {
+            color: #333333;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .feature-card p {
+            color: #6b7280;
+            font-size: 12px;
+        }
+        .button-container {
+            text-align: center;
+            margin: 35px 0;
+        }
+        .button {
+            display: inline-block;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 16px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+        }
+        .tips-box {
+            background-color: #fef3c7;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+        }
+        .tips-box h3 {
+            color: #92400e;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .tips-box ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .tips-box li {
+            color: #78350f;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .footer {
+            background-color: #f9fafb;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+        }
+        .footer p {
+            color: #9ca3af;
+            font-size: 13px;
+            margin-bottom: 5px;
+        }
+        .footer a {
+            color: #f59e0b;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-icon">🎉</div>
+            <h1>Welcome to {{.AppName}}!</h1>
+            <p>Your email has been verified successfully</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <p class="greeting">Congratulations, {{.RecipientName}}! 🎊</p>
+            
+            <p class="message">
+                Your account has been activated and you're now ready to start using <strong>{{.AppName}}</strong>.
+            </p>
+
+            <p class="message">Your role:</p>
+            <span class="role-badge">{{.Role}}</span>
+
+            <p class="message">
+                Here's what you can do with {{.AppName}}:
+            </p>
+
+            <!-- Features Grid -->
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">💬</div>
+                    <h4>Multi-Platform Chat</h4>
+                    <p>WhatsApp, Telegram & Instagram in one place</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h4>AI Assistant</h4>
+                    <p>Smart automated responses</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h4>Analytics</h4>
+                    <p>Track customer interactions</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📢</div>
+                    <h4>Broadcast</h4>
+                    <p>Send messages to multiple contacts</p>
+                </div>
+            </div>
+
+            <div class="button-container">
+                <a href="{{.FrontendURL}}/login" class="button">🚀 Get Started</a>
+            </div>
+
+            <div class="tips-box">
+                <h3>💡 Quick Tips to Get Started</h3>
+                <ul>
+                    <li>Set up your profile in Settings</li>
+                    <li>Connect your messaging platforms</li>
+                    <li>Configure AI agents for automated responses</li>
+                    <li>Import your existing contacts</li>
+                </ul>
+            </div>
+
+            <p class="message">
+                If you have any questions or need help getting started, our support team is here for you!
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>© {{.Year}} {{.AppName}}. All rights reserved.</p>
+            <p>
+                <a href="{{.FrontendURL}}">Visit Dashboard</a> · 
+                <a href="{{.FrontendURL}}/settings">Settings</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
