@@ -1,223 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to Divine CRM</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333333;
-            background-color: #f4f4f4;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: #ffffff;
-        }
-        .header {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            padding: 40px 30px;
-            text-align: center;
-        }
-        .header-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
-        .header h1 {
-            color: #ffffff;
-            font-size: 28px;
-            font-weight: 600;
-            margin: 0;
-        }
-        .header p {
-            color: #d1fae5;
-            font-size: 16px;
-            margin-top: 10px;
-        }
-        .content {
-            padding: 40px 30px;
-            background-color: #ffffff;
-        }
-        .greeting {
-            font-size: 22px;
-            color: #333333;
-            margin-bottom: 20px;
-        }
-        .message {
-            color: #555555;
-            font-size: 16px;
-            margin-bottom: 25px;
-        }
-        .role-badge {
-            display: inline-block;
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            color: #ffffff;
-            padding: 8px 20px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            margin: 10px 0 25px 0;
-        }
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin: 30px 0;
-        }
-        .feature-card {
-            background-color: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-        }
-        .feature-icon {
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-        .feature-card h4 {
-            color: #333333;
-            font-size: 14px;
-            margin-bottom: 5px;
-        }
-        .feature-card p {
-            color: #6b7280;
-            font-size: 12px;
-        }
-        .button-container {
-            text-align: center;
-            margin: 35px 0;
-        }
-        .button {
-            display: inline-block;
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            color: #ffffff !important;
-            text-decoration: none;
-            padding: 16px 40px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
-        }
-        .tips-box {
-            background-color: #fef3c7;
-            border-radius: 12px;
-            padding: 25px;
-            margin: 25px 0;
-        }
-        .tips-box h3 {
-            color: #92400e;
-            font-size: 16px;
-            margin-bottom: 15px;
-        }
-        .tips-box ul {
-            margin: 0;
-            padding-left: 20px;
-        }
-        .tips-box li {
-            color: #78350f;
-            font-size: 14px;
-            margin-bottom: 8px;
-        }
-        .footer {
-            background-color: #f9fafb;
-            padding: 30px;
-            text-align: center;
-            border-top: 1px solid #e5e7eb;
-        }
-        .footer p {
-            color: #9ca3af;
-            font-size: 13px;
-            margin-bottom: 5px;
-        }
-        .footer a {
-            color: #f59e0b;
-            text-decoration: none;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Welcome to {{company_name}}</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    body { margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+    table { border-spacing: 0; }
+    td { padding: 0; }
+    img { border: 0; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f5; padding: 40px 0; }
+    .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 48px; text-align: center; }
+    .header h1 { color: #ffffff; font-size: 28px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.5px; }
+    .header p { color: rgba(255,255,255,0.9); font-size: 16px; margin: 0; font-weight: 400; }
+    .content { padding: 48px; }
+    .content h2 { color: #18181b; font-size: 22px; font-weight: 600; margin: 0 0 24px 0; }
+    .content p { color: #52525b; font-size: 15px; line-height: 1.7; margin: 0 0 20px 0; }
+    .welcome-message { background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%); border-radius: 12px; padding: 32px; margin: 28px 0; text-align: center; }
+    .welcome-message h3 { color: #78350f; font-size: 18px; font-weight: 600; margin: 0 0 12px 0; }
+    .welcome-message p { color: #92400e; font-size: 15px; margin: 0; line-height: 1.6; }
+    .features-section { margin: 36px 0; }
+    .features-section h4 { color: #18181b; font-size: 16px; font-weight: 600; margin: 0 0 24px 0; }
+    .feature-item { background-color: #fafafa; border-radius: 8px; padding: 20px; margin-bottom: 12px; }
+    .feature-item h5 { color: #18181b; font-size: 15px; font-weight: 600; margin: 0 0 8px 0; }
+    .feature-item p { color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0; }
+    .getting-started { background-color: #f9fafb; border-radius: 12px; padding: 28px; margin: 32px 0; }
+    .getting-started h4 { color: #18181b; font-size: 16px; font-weight: 600; margin: 0 0 20px 0; }
+    .step-item { margin-bottom: 20px; padding-left: 44px; position: relative; }
+    .step-item:last-child { margin-bottom: 0; }
+    .step-number { position: absolute; left: 0; top: 0; width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; border-radius: 50%; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+    .step-item h5 { color: #18181b; font-size: 15px; font-weight: 600; margin: 0 0 6px 0; }
+    .step-item p { color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0; }
+    .button-container { text-align: center; margin: 36px 0; }
+    .button { display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff !important; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; }
+    .button-secondary { display: inline-block; background-color: #ffffff; border: 2px solid #e4e4e7; color: #3f3f46 !important; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-left: 12px; }
+    .divider { height: 1px; background-color: #e4e4e7; margin: 36px 0; }
+    .support-section { text-align: center; padding: 24px; background-color: #f4f4f5; border-radius: 8px; margin-top: 28px; }
+    .support-section h4 { color: #3f3f46; font-size: 15px; font-weight: 600; margin: 0 0 8px 0; }
+    .support-section p { color: #71717a; font-size: 14px; margin: 0 0 16px 0; }
+    .support-section a { color: #f59e0b; text-decoration: none; font-weight: 600; }
+    .footer { background-color: #fafafa; padding: 32px 48px; text-align: center; border-top: 1px solid #e4e4e7; }
+    .footer p { color: #a1a1aa; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0; }
+    .footer a { color: #f59e0b; text-decoration: none; }
+    .social-links { margin-top: 20px; }
+    .social-links a { display: inline-block; margin: 0 8px; color: #a1a1aa; text-decoration: none; font-size: 13px; }
+    @media only screen and (max-width: 620px) {
+      .content, .header, .footer { padding: 32px 24px !important; }
+      .button-secondary { margin-left: 0; margin-top: 12px; display: block; }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <div class="header-icon">🎉</div>
-            <h1>Welcome to {{.AppName}}!</h1>
-            <p>Your email has been verified successfully</p>
-        </div>
-
-        <!-- Content -->
-        <div class="content">
-            <p class="greeting">Congratulations, {{.RecipientName}}! 🎊</p>
+  <div class="wrapper">
+    <table class="main" align="center" cellpadding="0" cellspacing="0">
+      <!-- Header -->
+      <tr>
+        <td class="header">
+          <h1>Welcome to {{company_name}}</h1>
+          <p>We are excited to have you on board</p>
+        </td>
+      </tr>
+      
+      <!-- Content -->
+      <tr>
+        <td class="content">
+          <h2>Hello, {{user_name}}</h2>
+          
+          <p>Thank you for joining {{company_name}}. Your account has been successfully set up and you are now part of our community. We are committed to providing you with the best experience possible.</p>
+          
+          <div class="welcome-message">
+            <h3>Your journey starts here</h3>
+            <p>Explore our platform and discover all the powerful features designed to help you succeed. We have prepared everything you need to get started.</p>
+          </div>
+          
+          <div class="features-section">
+            <h4>What you can do with {{company_name}}</h4>
             
-            <p class="message">
-                Your account has been activated and you're now ready to start using <strong>{{.AppName}}</strong>.
-            </p>
-
-            <p class="message">Your role:</p>
-            <span class="role-badge">{{.Role}}</span>
-
-            <p class="message">
-                Here's what you can do with {{.AppName}}:
-            </p>
-
-            <!-- Features Grid -->
-            <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">💬</div>
-                    <h4>Multi-Platform Chat</h4>
-                    <p>WhatsApp, Telegram & Instagram in one place</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🤖</div>
-                    <h4>AI Assistant</h4>
-                    <p>Smart automated responses</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">📊</div>
-                    <h4>Analytics</h4>
-                    <p>Track customer interactions</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">📢</div>
-                    <h4>Broadcast</h4>
-                    <p>Send messages to multiple contacts</p>
-                </div>
+            <div class="feature-item">
+              <h5>Unified Inbox</h5>
+              <p>Manage all your customer conversations from WhatsApp, Instagram, and Telegram in one centralized dashboard.</p>
             </div>
-
-            <div class="button-container">
-                <a href="{{.FrontendURL}}/login" class="button">🚀 Get Started</a>
+            
+            <div class="feature-item">
+              <h5>AI-Powered Responses</h5>
+              <p>Let our intelligent AI assistant handle common inquiries automatically, ensuring quick responses 24/7.</p>
             </div>
-
-            <div class="tips-box">
-                <h3>💡 Quick Tips to Get Started</h3>
-                <ul>
-                    <li>Set up your profile in Settings</li>
-                    <li>Connect your messaging platforms</li>
-                    <li>Configure AI agents for automated responses</li>
-                    <li>Import your existing contacts</li>
-                </ul>
+            
+            <div class="feature-item">
+              <h5>Smart Analytics</h5>
+              <p>Gain valuable insights into customer interactions and team performance with comprehensive reporting tools.</p>
             </div>
-
-            <p class="message">
-                If you have any questions or need help getting started, our support team is here for you!
-            </p>
-        </div>
-
-        <!-- Footer -->
-        <div class="footer">
-            <p>© {{.Year}} {{.AppName}}. All rights reserved.</p>
-            <p>
-                <a href="{{.FrontendURL}}">Visit Dashboard</a> · 
-                <a href="{{.FrontendURL}}/settings">Settings</a>
-            </p>
-        </div>
-    </div>
+            
+            <div class="feature-item">
+              <h5>Team Collaboration</h5>
+              <p>Assign conversations, add labels, and collaborate seamlessly with your team members.</p>
+            </div>
+          </div>
+          
+          <div class="getting-started">
+            <h4>Get started in 3 simple steps</h4>
+            
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding-bottom: 20px;">
+                  <table cellpadding="0" cellspacing="0" style="padding-left: 44px; position: relative;">
+                    <tr>
+                      <td style="position: absolute; left: 0; top: 0; width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; border-radius: 50%; font-size: 14px; font-weight: 600; text-align: center; line-height: 32px;">1</td>
+                      <td>
+                        <h5 style="color: #18181b; font-size: 15px; font-weight: 600; margin: 0 0 6px 0;">Complete your profile</h5>
+                        <p style="color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0;">Add your details and customize your account settings</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-bottom: 20px;">
+                  <table cellpadding="0" cellspacing="0" style="padding-left: 44px; position: relative;">
+                    <tr>
+                      <td style="position: absolute; left: 0; top: 0; width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; border-radius: 50%; font-size: 14px; font-weight: 600; text-align: center; line-height: 32px;">2</td>
+                      <td>
+                        <h5 style="color: #18181b; font-size: 15px; font-weight: 600; margin: 0 0 6px 0;">Connect your channels</h5>
+                        <p style="color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0;">Link your WhatsApp, Instagram, or Telegram accounts</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <table cellpadding="0" cellspacing="0" style="padding-left: 44px; position: relative;">
+                    <tr>
+                      <td style="position: absolute; left: 0; top: 0; width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; border-radius: 50%; font-size: 14px; font-weight: 600; text-align: center; line-height: 32px;">3</td>
+                      <td>
+                        <h5 style="color: #18181b; font-size: 15px; font-weight: 600; margin: 0 0 6px 0;">Start engaging</h5>
+                        <p style="color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0;">Begin responding to customers and leverage AI assistance</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </div>
+          
+          <div class="button-container">
+            <a href="{{dashboard_url}}" class="button">Go to Dashboard</a>
+            <a href="{{docs_url}}" class="button-secondary">View Documentation</a>
+          </div>
+          
+          <div class="divider"></div>
+          
+          <div class="support-section">
+            <h4>Need help getting started?</h4>
+            <p>Our support team is here to assist you every step of the way.</p>
+            <a href="{{support_url}}">Contact Support</a> &nbsp;|&nbsp; <a href="{{docs_url}}">Browse Help Center</a>
+          </div>
+        </td>
+      </tr>
+      
+      <!-- Footer -->
+      <tr>
+        <td class="footer">
+          <p>This email was sent to {{user_email}}</p>
+          <p>{{company_address}}</p>
+          <div class="social-links">
+            <a href="{{website_url}}">Website</a>
+            <a href="{{support_url}}">Support</a>
+            <a href="{{privacy_url}}">Privacy Policy</a>
+          </div>
+          <p style="margin-top: 20px; color: #d4d4d8; font-size: 12px;">&copy; {{current_year}} {{company_name}}. All rights reserved.</p>
+        </td>
+      </tr>
+    </table>
+  </div>
 </body>
 </html>

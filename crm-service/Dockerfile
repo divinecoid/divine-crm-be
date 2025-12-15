@@ -1,15 +1,26 @@
+# Build stage
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
+# Install git untuk go mod yang membutuhkan git
+RUN apk add --no-cache git
+
+# Download dependencies dulu (agar caching lebih efisien)
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Copy semua file source code
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
+# Build binary (static build untuk image yang lebih kecil)
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd
+
+# Runtime stage
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates curl
+
+# Certificate + timezone
+RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /root/
 
